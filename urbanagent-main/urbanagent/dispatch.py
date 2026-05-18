@@ -10,6 +10,7 @@ from urbanagent.types import (
     ActionKind,
     CandidateScore,
     CityState,
+    Coordinate,
     DispatchAssignment,
     DispatchPlan,
     Incident,
@@ -17,6 +18,37 @@ from urbanagent.types import (
     UrbanAction,
     UrbanResource,
 )
+
+
+DEFAULT_FIRE_LANE_OFFSET_M = 3.5
+
+
+def lane_offset_destination(
+    start: Coordinate,
+    target: Coordinate,
+    *,
+    offset_m: float = DEFAULT_FIRE_LANE_OFFSET_M,
+) -> Coordinate:
+    """Shift ``target`` one lane to the right of the approach direction.
+
+    CARLA uses a left-handed XY ground plane (+X east, +Y south, +Z up); when
+    a vehicle heads along the forward unit ``(fx, fy)``, its right is
+    ``(-fy, fx)``. We keep z unchanged so the UGV stops alongside the incident
+    instead of driving into it.
+    """
+
+    dx = target.x - start.x
+    dy = target.y - start.y
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        return Coordinate(target.x, target.y + offset_m, target.z)
+    fx = dx / length
+    fy = dy / length
+    return Coordinate(
+        target.x + (-fy) * offset_m,
+        target.y + fx * offset_m,
+        target.z,
+    )
 
 
 @dataclass(frozen=True)
@@ -54,8 +86,14 @@ ROLE_SPECS: dict[str, RoleSpec] = {
 class DispatchPolicy:
     """Create a constrained multi-event dispatch plan from a city state."""
 
-    def __init__(self, route_planner: RoutePlanner | None = None) -> None:
+    def __init__(
+        self,
+        route_planner: RoutePlanner | None = None,
+        *,
+        fire_lane_offset_m: float = DEFAULT_FIRE_LANE_OFFSET_M,
+    ) -> None:
         self.route_planner = route_planner or LocalGraphRoutePlanner()
+        self.fire_lane_offset_m = float(fire_lane_offset_m)
 
     def open_incidents(self, state: CityState) -> list[Incident]:
         return [
@@ -173,12 +211,23 @@ class DispatchPolicy:
                 )
                 continue
             spec = ROLE_SPECS[candidate.role]
+            destination = incident.position
+            if (
+                candidate.role == "fire_suppression"
+                and resource.kind in {"unmanned_vehicle", "ground_vehicle"}
+                and self.fire_lane_offset_m > 0.0
+            ):
+                destination = lane_offset_destination(
+                    resource.position,
+                    incident.position,
+                    offset_m=self.fire_lane_offset_m,
+                )
             assignment = DispatchAssignment(
                 incident_id=incident.id,
                 resource_id=resource.id,
                 role=candidate.role,
                 action_kind=spec.action_kind,
-                destination=incident.position,
+                destination=destination,
                 score=candidate,
                 reason=(
                     f"Selected {resource.id} for {incident.id} with score "

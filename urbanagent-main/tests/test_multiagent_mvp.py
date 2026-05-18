@@ -126,6 +126,70 @@ class MultiAgentMVPTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ugv_actions[0].parameters.get("force_extinguish", False))
         self.assertTrue(ugv_actions[1].parameters.get("force_extinguish"))
 
+    async def test_fire_ugv_destination_offset_right_one_lane(self) -> None:
+        state = CityState(
+            timestamp="t0",
+            incidents=[
+                Incident(
+                    id="incident-fire-001",
+                    kind="fire",
+                    severity="high",
+                    position=Coordinate(100, 0, 0),
+                )
+            ],
+            resources=[
+                UrbanResource(
+                    id="UGV-01",
+                    kind="unmanned_vehicle",
+                    position=Coordinate(0, 0, 0),
+                    capabilities=["fire_suppression", "logistics_support"],
+                ),
+            ],
+        )
+        actions, _ = integrate_actions_deterministic(
+            [],
+            state=state,
+            dispatch_policy=DispatchPolicy(fire_lane_offset_m=3.5),
+        )
+        ugv_actions = [a for a in actions if a.target_id == "UGV-01"]
+        self.assertEqual(len(ugv_actions), 2)
+        for action in ugv_actions:
+            self.assertAlmostEqual(action.destination.x, 100.0, places=3)
+            self.assertAlmostEqual(action.destination.y, 3.5, places=3)
+            self.assertAlmostEqual(action.destination.z, 0.0, places=3)
+
+    async def test_fire_ugv_offset_disabled_when_zero(self) -> None:
+        state = CityState(
+            timestamp="t0",
+            incidents=[
+                Incident(
+                    id="incident-fire-001",
+                    kind="fire",
+                    severity="high",
+                    position=Coordinate(0, 50, 0),
+                )
+            ],
+            resources=[
+                UrbanResource(
+                    id="UGV-01",
+                    kind="unmanned_vehicle",
+                    position=Coordinate(0, 0, 0),
+                    capabilities=["fire_suppression"],
+                ),
+            ],
+        )
+        actions, _ = integrate_actions_deterministic(
+            [],
+            state=state,
+            dispatch_policy=DispatchPolicy(fire_lane_offset_m=0.0),
+        )
+        goto = next(
+            a
+            for a in actions
+            if a.target_id == "UGV-01" and not a.parameters.get("force_extinguish")
+        )
+        self.assertEqual(goto.destination, Coordinate(0, 50, 0))
+
     async def test_patrol_detects_fire_dispatches_and_returns(self) -> None:
         state = CityState(
             timestamp="t0",
