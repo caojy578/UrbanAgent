@@ -2,7 +2,7 @@
 
 Reproduces the closed loop without CarlaBridge:
   no fire -> patrol -> mock sandbox injects a fire after the first patrol
-  command -> dispatch -> return-to-base.
+  command -> hold above incident -> dispatch -> return-to-base.
 
 Run:
     python scripts/patrol_fire_smoke.py
@@ -65,7 +65,7 @@ class FireDiscoverySandbox(MockSandboxClient):
                     id="incident-fire-001",
                     kind="fire",
                     severity="high",
-                    position=Coordinate(10, 10, 0),
+                    position=Coordinate(25.3, 24.4, 0),
                 )
             )
         return result
@@ -91,6 +91,9 @@ async def main() -> int:
     applied = [r.action.kind for r in sandbox.applied_results]
     print("applied_kinds:", applied)
     assert "patrol_drone" in applied, applied
+    assert "hold_drone" in applied, applied
+    assert result.hold_outcome is not None
+    assert result.hold_outcome.criteria_satisfied, result.hold_outcome.notes
     assert "dispatch_vehicle" in applied, applied
     assert "dispatch_drone" in applied, applied
     assert "return_vehicle" in applied, applied

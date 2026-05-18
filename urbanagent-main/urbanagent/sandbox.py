@@ -42,6 +42,8 @@ class MockSandboxClient(SandboxClient):
     def __init__(self, initial_state: CityState | None = None) -> None:
         self._state = initial_state or build_single_fire_state()
         self._applied: list[ActionResult] = []
+        self._patrol_anchors: dict[str, Coordinate] = {}
+        self._patrol_step_m = 12.0
 
     @property
     def applied_results(self) -> list[ActionResult]:
@@ -55,6 +57,7 @@ class MockSandboxClient(SandboxClient):
         return
 
     async def get_state(self) -> CityState:
+        self._advance_patrol_positions()
         return self._state
 
     async def send_action(self, action: UrbanAction) -> ActionResult:
@@ -65,6 +68,8 @@ class MockSandboxClient(SandboxClient):
         elif action.kind in {"return_drone", "return_vehicle"}:
             result = self._return_resource(action)
         elif action.kind in {"hold_drone", "stop_vehicle"}:
+            if action.kind == "hold_drone":
+                self._patrol_anchors.pop(action.target_id, None)
             result = self._instant_mobile_command(action)
         elif action.kind == "control_traffic_light":
             result = self._control_traffic_light(action)
@@ -158,14 +163,14 @@ class MockSandboxClient(SandboxClient):
                 action=action,
                 message="patrol_drone requires a non-empty path",
             )
-        last = path[-1]
-        if isinstance(last, Coordinate):
-            resource.position = last
-        elif isinstance(last, dict):
-            resource.position = Coordinate(
-                float(last["x"]),
-                float(last["y"]),
-                float(last.get("z", resource.position.z)),
+        anchor = action.parameters.get("fire_watch_anchor")
+        if isinstance(anchor, Coordinate):
+            self._patrol_anchors[resource.id] = anchor
+        elif isinstance(anchor, dict):
+            self._patrol_anchors[resource.id] = Coordinate(
+                float(anchor["x"]),
+                float(anchor["y"]),
+                float(anchor.get("z", resource.position.z)),
             )
         resource.status = "available"
         resource.current_task_id = "patrol"
@@ -176,6 +181,25 @@ class MockSandboxClient(SandboxClient):
             action=action,
             message=f"drone {resource.id} started patrol",
         )
+
+    def _advance_patrol_positions(self) -> None:
+        """Move mock patrol drones toward ``fire_watch_anchor`` each state poll."""
+        for drone_id, anchor in list(self._patrol_anchors.items()):
+            resource = self._find_resource(drone_id)
+            if resource is None or resource.current_task_id != "patrol":
+                self._patrol_anchors.pop(drone_id, None)
+                continue
+            remaining = _distance(resource.position, anchor)
+            if remaining <= _PATROL_ARRIVAL_EPS_M:
+                resource.position = anchor
+                continue
+            step = min(self._patrol_step_m, remaining)
+            ratio = step / remaining
+            resource.position = Coordinate(
+                resource.position.x + (anchor.x - resource.position.x) * ratio,
+                resource.position.y + (anchor.y - resource.position.y) * ratio,
+                resource.position.z + (anchor.z - resource.position.z) * ratio,
+            )
 
     def _return_resource(self, action: UrbanAction) -> ActionResult:
         resource = self._find_resource(action.target_id)
@@ -520,3 +544,6 @@ def _distance(left: Coordinate, right: Coordinate) -> float:
         + (left.y - right.y) ** 2
         + (left.z - right.z) ** 2
     )
+
+
+_PATROL_ARRIVAL_EPS_M = 0.5

@@ -1,6 +1,10 @@
 """Multi-agent MVP package (meta + subagents + batch runner)."""
 
-from urbanagent.multiagent.batch_runner import batch_criteria_met, execute_batch_ordered
+from urbanagent.multiagent.batch_runner import (
+    batch_criteria_met,
+    execute_batch_ordered,
+    execute_batch_parallel,
+)
 from urbanagent.multiagent.pipeline import UrbanMultiAgentSystem
 from urbanagent.multiagent.registry import SubAgentRegistry, build_default_mvp_registry
 from urbanagent.multiagent.schemas import (
@@ -32,4 +36,5 @@ __all__ = [
     "batch_criteria_met",
     "build_default_mvp_registry",
     "execute_batch_ordered",
+    "execute_batch_parallel",
 ]
