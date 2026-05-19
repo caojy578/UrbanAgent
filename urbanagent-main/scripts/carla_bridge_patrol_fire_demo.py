@@ -123,7 +123,7 @@ async def main() -> int:
     parser.add_argument(
         "--arrival-poll-interval",
         type=float,
-        default=None,
+        default=0.05,
         help="Poll interval while waiting for patrol UAV at fire (default: detection interval).",
     )
     parser.add_argument(
