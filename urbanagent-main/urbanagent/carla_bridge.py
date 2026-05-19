@@ -26,6 +26,7 @@ import uuid
 from typing import Any
 
 from urbanagent.errors import SandboxWireError
+from urbanagent.fire_goto import apply_fire_goto_offset_to_action
 from urbanagent.resource_policy import bridge_status_from_role_speed
 from urbanagent.sandbox import SandboxClient
 from urbanagent.types import (
@@ -550,6 +551,7 @@ class CarlaBridgeSandboxClient(SandboxClient):
             }
 
         if action.kind == "dispatch_drone":
+            action = apply_fire_goto_offset_to_action(action)
             if action.destination is None:
                 return None
             params: dict[str, Any] = {

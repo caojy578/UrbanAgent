@@ -1,6 +1,7 @@
 """Run UrbanMultiAgentSystem.run_patrol_fire_response against CarlaBridge.
 
-Closed loop: 无火情 -> UAV 巡逻 -> state_snapshot 出现新 fire incident ->
+Closed loop: 无火情 -> UAV 从起飞点直线巡逻(初始点 -> 沿 +X 前飞 90m -> 返回，高度 15m) ->
+state_snapshot 出现 fire incident -> 等待巡逻到达着火点上方后 hold ->
 event_log 提示 -> UrbanAgent 火情调度 -> 灭火完成后 UAV/UGV 返航.
 
 NOTE: Do not supply --fallback-incident-id unless you want to bypass the patrol
@@ -22,6 +23,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from urbanagent import CarlaBridgeSandboxClient, UrbanMultiAgentSystem
+from urbanagent.multiagent.pipeline import DEFAULT_FIRE_WATCH_XY
 from urbanagent.types import Coordinate, Incident
 
 
@@ -69,12 +71,36 @@ async def main() -> int:
         default=None,
         help=(
             "Patrol waypoint in 'x,y,z' (meters, CARLA frame). Pass multiple "
-            "times to define a polyline. When omitted, each UAV gets an auto "
-            "square around its current pose."
+            "times to override the default straight path. When omitted, each UAV "
+            "flies from each UAV's initial pose: leg 1 = origin, leg 2 = "
+            "--patrol-leg-m along --patrol-forward-axis, then loop back."
         ),
     )
-    parser.add_argument("--patrol-altitude", type=float, default=60.0)
-    parser.add_argument("--patrol-radius", type=float, default=80.0)
+    parser.add_argument(
+        "--fire-watch-x",
+        type=float,
+        default=DEFAULT_FIRE_WATCH_XY[0],
+        help="Fire-watch ground x (patrol line origin; default 25.3).",
+    )
+    parser.add_argument(
+        "--fire-watch-y",
+        type=float,
+        default=DEFAULT_FIRE_WATCH_XY[1],
+        help="Fire-watch ground y (patrol line origin; default 24.4).",
+    )
+    parser.add_argument("--patrol-altitude", type=float, default=15.0)
+    parser.add_argument(
+        "--patrol-leg-m",
+        type=float,
+        default=130.0,
+        help="Straight patrol leg length in meters (forward then back; default 90).",
+    )
+    parser.add_argument(
+        "--patrol-forward-axis",
+        choices=("x", "y"),
+        default="x",
+        help="CARLA axis for the outbound leg (+x or +y; default +x).",
+    )
     parser.add_argument(
         "--max-patrol-drones",
         type=int,
@@ -85,7 +111,7 @@ async def main() -> int:
     parser.add_argument(
         "--detection-poll-interval",
         type=float,
-        default=0.5,
+        default=0.1,
         help="Seconds between two state_snapshot polls when waiting for fire.",
     )
     parser.add_argument(
@@ -93,6 +119,18 @@ async def main() -> int:
         type=int,
         default=120,
         help="Max polls before giving up (default: 60s at 0.5s interval).",
+    )
+    parser.add_argument(
+        "--arrival-poll-interval",
+        type=float,
+        default=0.05,
+        help="Poll interval while waiting for patrol UAV at fire (default: detection interval).",
+    )
+    parser.add_argument(
+        "--max-arrival-rounds",
+        type=int,
+        default=120,
+        help="Max polls waiting for patrol to reach fire-watch anchor before hold.",
     )
     parser.add_argument(
         "--no-return",
@@ -149,11 +187,17 @@ async def main() -> int:
     try:
         result = await agent.run_patrol_fire_response(
             patrol_waypoints=args.patrol_waypoint,
+            fire_watch_point=Coordinate(
+                args.fire_watch_x, args.fire_watch_y, 0.0
+            ),
             patrol_altitude=args.patrol_altitude,
-            patrol_radius=args.patrol_radius,
+            patrol_leg_m=args.patrol_leg_m,
+            patrol_forward_axis=args.patrol_forward_axis,
             max_patrol_drones=args.max_patrol_drones,
             detection_poll_interval_s=args.detection_poll_interval,
             max_detection_rounds=args.max_detection_rounds,
+            arrival_poll_interval_s=args.arrival_poll_interval,
+            max_arrival_rounds=args.max_arrival_rounds,
             return_after_response=not args.no_return,
         )
     finally:
@@ -167,6 +211,7 @@ async def main() -> int:
         print(f"  - {note}")
 
     _print_batch_outcome("PATROL", result.patrol_outcome)
+    _print_batch_outcome("HOLD", result.hold_outcome)
 
     if result.response is not None:
         print(

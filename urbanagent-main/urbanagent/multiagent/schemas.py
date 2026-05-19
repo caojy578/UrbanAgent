@@ -97,9 +97,10 @@ class UrbanMultiAgentResult:
 
 @dataclass
 class PatrolFireResponseResult:
-    """Patrol → fire detection → dispatch → return-to-base workflow result."""
+    """Patrol → fire detection → hold → dispatch → return-to-base workflow result."""
 
     patrol_outcome: BatchOutcome | None = None
+    hold_outcome: BatchOutcome | None = None
     detected_incident_id: str | None = None
     detection_notes: list[str] = field(default_factory=list)
     response: UrbanMultiAgentResult | None = None

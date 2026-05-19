@@ -270,7 +270,10 @@ class SendActionTest(unittest.IsolatedAsyncioTestCase):
             inner = payload["payload"]
             self.assertEqual(inner["kind"], "UAV_GOTO")
             self.assertEqual(inner["target"], "UAV-01")
-            self.assertEqual(inner["params"]["waypoint"], {"x": 10.0, "y": 20.0, "z": 85.0})
+            self.assertEqual(
+                inner["params"]["waypoint"],
+                {"x": -3.0, "y": 20.0, "z": 85.0},
+            )
             self.assertEqual(inner["params"]["cruise_speed"], 8.0)
             await fake.deliver(
                 "command_status",

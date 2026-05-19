@@ -223,7 +223,7 @@ class MultiAgentMVPTest(unittest.IsolatedAsyncioTestCase):
                             id="incident-fire-001",
                             kind="fire",
                             severity="high",
-                            position=Coordinate(10, 10, 0),
+                            position=Coordinate(25.3, 24.4, 0),
                         )
                     )
                 return result
@@ -243,6 +243,8 @@ class MultiAgentMVPTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.detected_incident_id, "incident-fire-001")
         self.assertIsNotNone(result.patrol_outcome)
         self.assertTrue(result.patrol_outcome.criteria_satisfied)
+        self.assertIsNotNone(result.hold_outcome)
+        self.assertTrue(result.hold_outcome.criteria_satisfied)
         self.assertIsNotNone(result.response)
         self.assertTrue(result.response.batch_outcome.criteria_satisfied)
         self.assertIsNotNone(result.return_outcome)
@@ -250,6 +252,7 @@ class MultiAgentMVPTest(unittest.IsolatedAsyncioTestCase):
 
         applied_kinds = [r.action.kind for r in sandbox.applied_results]
         self.assertIn("patrol_drone", applied_kinds)
+        self.assertIn("hold_drone", applied_kinds)
         self.assertIn("dispatch_vehicle", applied_kinds)
         self.assertIn("dispatch_drone", applied_kinds)
         self.assertIn("return_vehicle", applied_kinds)

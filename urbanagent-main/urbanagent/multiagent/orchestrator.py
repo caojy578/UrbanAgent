@@ -6,6 +6,7 @@ import re
 from typing import Any, cast
 
 from urbanagent.dispatch import DispatchPolicy
+from urbanagent.fire_goto import apply_fire_goto_offset_to_actions
 from urbanagent.llm.types import Message
 from urbanagent.multiagent.llm_json import try_loads_json_object
 from urbanagent.multiagent.schemas import CommittedBatch, SubAgentRole, SubGoal, SubPlan
@@ -358,6 +359,8 @@ async def build_committed_batch(
     if not any(a.kind in {"dispatch_vehicle", "dispatch_drone"} for a in actions):
         rationale = f"{rationale}; no dispatchable mobile resources"
         actions = []
+    else:
+        actions = apply_fire_goto_offset_to_actions(actions)
     return CommittedBatch(batch_id=new_batch_id(), actions=actions, rationale=rationale)
 
 
