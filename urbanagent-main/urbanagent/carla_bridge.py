@@ -19,6 +19,7 @@ see Bridge-side completion, not just RPC acceptance.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import time
@@ -47,6 +48,10 @@ DEFAULT_UGV_TARGET_SPEED = 25.0
 _LOG = logging.getLogger(__name__)
 
 
+def _json_wire(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
 class CarlaBridgeSandboxClient(SandboxClient):
     """CarlaBridge Socket.IO v4 ``/agent`` client (protocol v1.0)."""
 
@@ -62,10 +67,12 @@ class CarlaBridgeSandboxClient(SandboxClient):
         command_timeout: float = 60.0,
         extinguish_radius_m: float = EXTINGUISH_RADIUS_M,
         default_incidents: list[Incident] | None = None,
+        log_commands: bool = True,
     ) -> None:
         self.url = url
         self.namespace = namespace
         self.agent_id = agent_id
+        self.log_commands = log_commands
         self.connect_timeout = connect_timeout
         self.ack_timeout = ack_timeout
         self.state_timeout = state_timeout
@@ -89,6 +96,14 @@ class CarlaBridgeSandboxClient(SandboxClient):
         self._in_flight_futures: dict[str, asyncio.Future[ActionResult]] = {}
         self._in_flight_actions: dict[str, UrbanAction] = {}
         self._events: list[dict[str, Any]] = []
+
+    def _log_command_wire(self, phase: str, data: Any) -> None:
+        """打印/记录即将发往 Bridge 的 agent.command 原文（含 params）。"""
+        if not self.log_commands:
+            return
+        text = _json_wire(data)
+        _LOG.info("agent.command %s %s", phase, text)
+        print(f"[agent.command {phase}] {text}", flush=True)
 
     @property
     def event_logs(self) -> list[dict[str, Any]]:
@@ -201,6 +216,7 @@ class CarlaBridgeSandboxClient(SandboxClient):
         self._in_flight_actions[cmd_id] = action
 
         envelope = self._wrap("agent.command", cmd_payload)
+        self._log_command_wire("→", envelope)
         try:
             try:
                 ack = await self._sio.call(
@@ -210,10 +226,12 @@ class CarlaBridgeSandboxClient(SandboxClient):
                     timeout=self.ack_timeout,
                 )
             except asyncio.TimeoutError as exc:
+                self._log_command_wire("ack(timeout)", {"cmd_id": cmd_id})
                 raise SandboxWireError(
                     f"agent.command RPC timeout (cmd_id={cmd_id})",
                 ) from exc
 
+            self._log_command_wire("ack", ack)
             if not isinstance(ack, dict) or ack.get("status") != "accepted":
                 reason = (
                     str(ack.get("reason", "rejected"))
